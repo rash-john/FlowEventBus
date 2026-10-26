@@ -1,0 +1,4 @@
+jdk:
+  - openjdk17
+install:
+  - ./gradlew publishToMavenLocal -PGROUP=com.github.rash-john.FlowEventBus -PVERSION_NAME=$VERSION

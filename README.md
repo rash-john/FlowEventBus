@@ -1,84 +1,115 @@
-# FlowEventBus
+<div align="center">
 
-A coroutine-first event bus for Android & Kotlin, modeled on greenrobot EventBus.
-Same mental model (`register`, `@Subscribe`, `ThreadMode`, sticky events, priorities, cancellation), but every
-delivery runs on coroutine dispatchers, handlers can be `suspend`, and events are available as `Flow`.
+# 🚌 FlowEventBus
 
-- [Project layout](#project-layout)
-- [Setup](#setup)
-- [Usage](#usage)
-- [How it works (implementation)](#how-it-works-implementation)
-- [Configuration reference](#configuration-reference)
-- [Building & testing](#building--testing)
-- [Mapping from EventBus](#mapping-from-eventbus)
-- [Limitations / not ported](#limitations--not-ported)
-- [License](#license)
+**A coroutine-first event bus for Android & Kotlin, inspired by [greenrobot EventBus](https://github.com/greenrobot/EventBus).**
+
+[![JitPack](https://jitpack.io/v/rash-john/FlowEventBus.svg)](https://jitpack.io/#rash-john/FlowEventBus)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.0.21-7F52FF.svg?logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![Coroutines](https://img.shields.io/badge/coroutines-1.9.0-7F52FF.svg)](https://github.com/Kotlin/kotlinx.coroutines)
+[![Android](https://img.shields.io/badge/minSdk-23-3DDC84.svg?logo=android&logoColor=white)](https://developer.android.com)
+
+</div>
+
+If you know [greenrobot EventBus](https://github.com/greenrobot/EventBus), you already know FlowEventBus:
+`register`, `@Subscribe`, `ThreadMode`, sticky events, priorities and cancellation all work the same way.
+The difference is under the hood: every delivery runs on coroutine dispatchers, handlers can be `suspend`,
+and any event type can be collected as a `Flow`.
+
+```kotlin
+@Subscribe(threadMode = ThreadMode.MAIN)
+suspend fun onRideRequested(event: RideRequested) { … }   // suspend handlers ✅
+
+bus.events<LocationChanged>().debounce(500).collect { … } // events as Flow ✅
+
+onEvent<RideRequested> { show(it) }                       // lifecycle-aware, no unregister ✅
+```
+
+## ✨ Features
+
+- 🔁 **Drop-in mental model.** The same API shape as greenrobot EventBus, so migrating is mostly renaming ([mapping table](#-mapping-from-eventbus)).
+- ⏸️ **`suspend` handlers.** `@Subscribe` methods and lambdas can suspend, and `emit()` waits until every one has finished.
+- 🌊 **Flow API.** `events<T>()` gives you a cold `Flow<T>` that works with every operator you already use.
+- 🧵 **Five thread modes:** `POSTING`, `MAIN`, `MAIN_ORDERED`, `BACKGROUND` and `ASYNC`, all backed by coroutine dispatchers.
+- ♻️ **Lifecycle-aware.** `registerWithLifecycle`, `subscribe(owner)` and `onEvent<T>` clean up after themselves.
+- 📌 **Sticky events, priorities and cancellation**, matching EventBus.
+- ⚡ **Optional KSP index.** Look up subscribers at compile time and skip reflection.
+- 🛡️ **R8 ready.** Keep rules ship inside the jar.
+
+## 📑 Contents
+
+- [Installation](#-installation)
+- [Usage](#-usage)
+- [How it works](#-how-it-works-implementation)
+- [Configuration reference](#%EF%B8%8F-configuration-reference)
+- [Project layout](#-project-layout)
+- [Building & testing](#-building--testing)
+- [Mapping from EventBus](#-mapping-from-eventbus)
+- [Limitations](#%EF%B8%8F-limitations--not-ported)
+- [License](#-license)
 
 ---
 
-## Project layout
+## 📦 Installation
 
-```
-FlowEventBus/
-├── floweventbus/                    pure Kotlin/JVM core (only depends on kotlinx-coroutines-core)
-│   └── src/main/kotlin/com/floweventbus/
-│       ├── FlowEventBus.kt          the bus: registration, posting, delivery, sticky store, queues
-│       ├── FlowEventBusBuilder.kt   configuration options + installDefaultFlowEventBus()
-│       ├── FlowEventBusExtensions.kt reified Kotlin helpers: subscribe<T>, events<T>, getStickyEvent<T> …
-│       ├── Subscribe.kt             @Subscribe(threadMode, sticky, priority) annotation
-│       ├── SubscriberMethodFinder.kt finds @Subscribe methods via a generated index or reflection, cached
-│       ├── Subscription.kt          EventSubscription handle + internal Subscription record
-│       ├── ThreadMode.kt            POSTING / MAIN / MAIN_ORDERED / BACKGROUND / ASYNC
-│       ├── MainThreadSupport.kt     "what is the main thread" abstraction, auto-detects Dispatchers.Main
-│       ├── FlowEventBusLogger.kt    logging interface (Console, None)
-│       └── Events.kt                FlowEventBusException, NoSubscriberEvent, SubscriberExceptionEvent
-│   └── src/main/resources/META-INF/proguard/floweventbus.pro   R8 rules shipped in the jar
-│
-├── floweventbus-android/            Android add-on (depends on :floweventbus)
-│   └── src/main/kotlin/com/floweventbus/android/
-│       ├── AndroidLogger.kt         Logcat logger + FlowEventBusBuilder.android()
-│       └── LifecycleExtensions.kt   registerWithLifecycle, subscribe(owner), LifecycleOwner.onEvent<T>
-│
-└── floweventbus-ksp/                optional KSP processor: generates a SubscriberIndex
-    └── src/main/kotlin/com/floweventbus/ksp/SubscriberIndexProcessor.kt
-```
+FlowEventBus is published on [**JitPack**](https://jitpack.io/#rash-john/FlowEventBus).
 
-| Module | Type | Depends on |
-|---|---|---|
-| `:floweventbus` | Kotlin/JVM library (`java-library`) | `kotlinx-coroutines-core` (api) |
-| `:floweventbus-android` | Android library, minSdk 23, compileSdk 37 | `:floweventbus`, `kotlinx-coroutines-android`, `androidx.lifecycle:lifecycle-runtime-ktx` |
-| `:floweventbus-ksp` | KSP processor (`ksp(...)` only, not on the runtime classpath) | `symbol-processing-api` |
-
-Toolchain: Kotlin 2.0.21, KSP 2.0.21-1.0.28, coroutines 1.9.0, AGP 8.13.2, JVM 17. Group `com.floweventbus`, version `0.2.0`.
-
----
-
-## Setup
-
-Publish locally with `./gradlew publishToMavenLocal`, then add `mavenLocal()` in `settings.gradle.kts`:
+**1. Add the JitPack repository** in `settings.gradle.kts`:
 
 ```kotlin
 dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        mavenLocal()
+        maven("https://jitpack.io")
     }
 }
 ```
 
-Then:
+<details>
+<summary>Groovy (<code>settings.gradle</code>)</summary>
+
+```groovy
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+    }
+}
+```
+</details>
+
+**2. Add the dependency** in your module's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.floweventbus:floweventbus-android:0.2.0") // Android app
-    // implementation("com.floweventbus:floweventbus:0.2.0")      // plain JVM / shared module
+    implementation("com.github.rash-john.FlowEventBus:floweventbus-android:0.2.0") // Android app
+    // implementation("com.github.rash-john.FlowEventBus:floweventbus:0.2.0")      // plain JVM / shared module
 }
 ```
 
-Or from source, as Gradle modules: `implementation(project(":floweventbus-android"))`.
+<details>
+<summary>Groovy (<code>build.gradle</code>)</summary>
 
-Optional, in `Application.onCreate()` (must run **before** anything calls `FlowEventBus.getDefault()`):
+```groovy
+dependencies {
+    implementation 'com.github.rash-john.FlowEventBus:floweventbus-android:0.2.0'
+}
+```
+</details>
+
+| Artifact | Use it for |
+|---|---|
+| `floweventbus-android` | Android apps. Includes the core module, Logcat logging, `Dispatchers.Main` and the Lifecycle helpers. |
+| `floweventbus` | Pure Kotlin/JVM modules (only depends on `kotlinx-coroutines-core`). |
+| `floweventbus-ksp` | Optional compile-time subscriber index, added with `ksp(...)`. |
+
+> [!TIP]
+> To try the latest unreleased commit, use `main-SNAPSHOT` as the version. JitPack builds it on first request.
+
+**3. Optional:** configure the default bus in `Application.onCreate()`. This must run **before** anything calls `FlowEventBus.getDefault()`:
 
 ```kotlin
 FlowEventBus.builder().android().apply {
@@ -86,7 +117,14 @@ FlowEventBus.builder().android().apply {
 }.installDefaultFlowEventBus()
 ```
 
-### Subscriber index (optional)
+<details>
+<summary>Other ways to install: Maven Local, or from source</summary>
+
+- **Maven Local:** run `./gradlew publishToMavenLocal`, add `mavenLocal()` to your repositories and use the `com.floweventbus` group, for example `com.floweventbus:floweventbus-android:0.2.0`.
+- **From source:** include the modules in your build and depend on them with `implementation(project(":floweventbus-android"))`.
+</details>
+
+### ⚡ Subscriber index (optional)
 
 `register` finds `@Subscribe` methods by reflection, once per class. To skip that, let KSP generate an
 index at compile time, in each module that has subscribers:
@@ -96,7 +134,7 @@ plugins { id("com.google.devtools.ksp") version "2.0.21-1.0.28" } // match your 
 
 ksp { arg("floweventbus.index", "com.example.app.AppEventBusIndex") } // unique name per module
 
-dependencies { ksp("com.floweventbus:floweventbus-ksp:0.2.0") }
+dependencies { ksp("com.github.rash-john.FlowEventBus:floweventbus-ksp:0.2.0") }
 ```
 
 ```kotlin
@@ -105,13 +143,13 @@ FlowEventBus.builder().android()
     .installDefaultFlowEventBus()
 ```
 
-The generated code calls each handler directly. A class it can't call (private or local, a private or
-protected handler, a generic event type) is left out with a build warning and is found by reflection at
-runtime, so adding the index never breaks anything.
+The generated code calls each handler directly. Some classes can't be called that way: private or local
+classes, private or protected handlers, and generic event types. Those are left out with a build warning
+and found by reflection at runtime, so adding the index never breaks anything.
 
 ---
 
-## Usage
+## 🚀 Usage
 
 There are three ways to subscribe. All of them go through the same internal delivery pipeline.
 
@@ -217,7 +255,7 @@ bus.subscribe<SubscriberExceptionEvent> { crashReporter.log(it.throwable, it.cau
 
 ---
 
-## How it works (implementation)
+## 🔍 How it works (implementation)
 
 ### Big picture
 
@@ -434,7 +472,7 @@ the rules either, but they are kept anyway since the same jar serves both paths.
 
 ---
 
-## Configuration reference
+## ⚙️ Configuration reference
 
 `FlowEventBus.builder()` / `FlowEventBus.build { … }`:
 
@@ -456,7 +494,44 @@ Then `.build()` for a private bus or `.installDefaultFlowEventBus()` to make it 
 
 ---
 
-## Building & testing
+## 🗂️ Project layout
+
+```
+FlowEventBus/
+├── floweventbus/                    pure Kotlin/JVM core (only depends on kotlinx-coroutines-core)
+│   └── src/main/kotlin/com/floweventbus/
+│       ├── FlowEventBus.kt          the bus: registration, posting, delivery, sticky store, queues
+│       ├── FlowEventBusBuilder.kt   configuration options + installDefaultFlowEventBus()
+│       ├── FlowEventBusExtensions.kt reified Kotlin helpers: subscribe<T>, events<T>, getStickyEvent<T> …
+│       ├── Subscribe.kt             @Subscribe(threadMode, sticky, priority) annotation
+│       ├── SubscriberMethodFinder.kt finds @Subscribe methods via a generated index or reflection, cached
+│       ├── Subscription.kt          EventSubscription handle + internal Subscription record
+│       ├── ThreadMode.kt            POSTING / MAIN / MAIN_ORDERED / BACKGROUND / ASYNC
+│       ├── MainThreadSupport.kt     "what is the main thread" abstraction, auto-detects Dispatchers.Main
+│       ├── FlowEventBusLogger.kt    logging interface (Console, None)
+│       └── Events.kt                FlowEventBusException, NoSubscriberEvent, SubscriberExceptionEvent
+│   └── src/main/resources/META-INF/proguard/floweventbus.pro   R8 rules shipped in the jar
+│
+├── floweventbus-android/            Android add-on (depends on :floweventbus)
+│   └── src/main/kotlin/com/floweventbus/android/
+│       ├── AndroidLogger.kt         Logcat logger + FlowEventBusBuilder.android()
+│       └── LifecycleExtensions.kt   registerWithLifecycle, subscribe(owner), LifecycleOwner.onEvent<T>
+│
+└── floweventbus-ksp/                optional KSP processor: generates a SubscriberIndex
+    └── src/main/kotlin/com/floweventbus/ksp/SubscriberIndexProcessor.kt
+```
+
+| Module | Type | Depends on |
+|---|---|---|
+| `:floweventbus` | Kotlin/JVM library (`java-library`) | `kotlinx-coroutines-core` (api) |
+| `:floweventbus-android` | Android library, minSdk 23, compileSdk 37 | `:floweventbus`, `kotlinx-coroutines-android`, `androidx.lifecycle:lifecycle-runtime-ktx` |
+| `:floweventbus-ksp` | KSP processor (`ksp(...)` only, not on the runtime classpath) | `symbol-processing-api` |
+
+Toolchain: Kotlin 2.0.21, KSP 2.0.21-1.0.28, coroutines 1.9.0, AGP 8.13.2, JVM 17. Group `com.github.rash-john.FlowEventBus` on JitPack (`com.floweventbus` for local builds), version `0.2.0`.
+
+---
+
+## 🧪 Building & testing
 
 ```bash
 ./gradlew build                 # compile all modules + run tests
@@ -484,14 +559,22 @@ mixes indexed and reflected subscribers.
 
 ### Releasing
 
-Publishing uses gradle-maven-publish-plugin; coordinates and POM metadata live in `gradle.properties`.
-Bump `VERSION_NAME`, then run `./gradlew publishToMavenLocal` (or add your own repository).
+Releases are built by [JitPack](https://jitpack.io/#rash-john/FlowEventBus) from git tags, using `jitpack.yml`
+(JDK 17, published under `com.github.rash-john.FlowEventBus`). To cut a release:
+
+```bash
+# bump VERSION_NAME in gradle.properties, commit, then:
+git tag 0.3.0 && git push origin 0.3.0
+```
+
+JitPack builds the tag the first time someone requests it, or you can start the build from the JitPack page.
+POM metadata lives in `gradle.properties` (gradle-maven-publish-plugin).
 
 ---
 
-## Mapping from EventBus
+## 🔄 Mapping from EventBus
 
-| EventBus | FlowEventBus |
+| [greenrobot EventBus](https://github.com/greenrobot/EventBus) | FlowEventBus |
 |---|---|
 | `EventBus.getDefault()` | `FlowEventBus.getDefault()` |
 | `EventBus.builder()...installDefaultEventBus()` | `FlowEventBus.builder()...installDefaultFlowEventBus()` |
@@ -506,7 +589,7 @@ Bump `VERSION_NAME`, then run `./gradlew publishToMavenLocal` (or add your own r
 
 ---
 
-## Limitations / not ported
+## ⚠️ Limitations / not ported
 
 - `AsyncExecutor` / `ThrowableFailureEvent` utilities – plain coroutines cover this.
 - An `emit` called from a queued handler (MAIN off-main, MAIN_ORDERED, BACKGROUND on-main) doesn't wait for
@@ -515,6 +598,17 @@ Bump `VERSION_NAME`, then run `./gradlew publishToMavenLocal` (or add your own r
 
 ---
 
-## License
+## 📄 License
 
 Licensed under the [Apache License, Version 2.0](LICENSE).
+
+## 🙏 Acknowledgements
+
+FlowEventBus is a coroutine port of the ideas in [greenrobot EventBus](https://github.com/greenrobot/EventBus)
+by [greenrobot](https://greenrobot.org/eventbus/). Thanks to its authors for the original design.
+
+<div align="center">
+
+If FlowEventBus helps you, consider giving it a ⭐
+
+</div>
