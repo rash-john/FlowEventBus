@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.floweventbus.android"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 23

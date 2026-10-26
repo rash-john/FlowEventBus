@@ -85,8 +85,8 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.github.rash-john.FlowEventBus:floweventbus-android:0.2.0") // Android app
-    // implementation("com.github.rash-john.FlowEventBus:floweventbus:0.2.0")      // plain JVM / shared module
+    implementation("com.github.rash-john.FlowEventBus:floweventbus-android:0.2.1") // Android app
+    // implementation("com.github.rash-john.FlowEventBus:floweventbus:0.2.1")      // plain JVM / shared module
 }
 ```
 
@@ -95,7 +95,7 @@ dependencies {
 
 ```groovy
 dependencies {
-    implementation 'com.github.rash-john.FlowEventBus:floweventbus-android:0.2.0'
+    implementation 'com.github.rash-john.FlowEventBus:floweventbus-android:0.2.1'
 }
 ```
 </details>
@@ -120,7 +120,7 @@ FlowEventBus.builder().android().apply {
 <details>
 <summary>Other ways to install: Maven Local, or from source</summary>
 
-- **Maven Local:** run `./gradlew publishToMavenLocal`, add `mavenLocal()` to your repositories and use the `com.floweventbus` group, for example `com.floweventbus:floweventbus-android:0.2.0`.
+- **Maven Local:** run `./gradlew publishToMavenLocal`, add `mavenLocal()` to your repositories and use the `com.floweventbus` group, for example `com.floweventbus:floweventbus-android:0.2.1`.
 - **From source:** include the modules in your build and depend on them with `implementation(project(":floweventbus-android"))`.
 </details>
 
@@ -134,7 +134,7 @@ plugins { id("com.google.devtools.ksp") version "2.0.21-1.0.28" } // match your 
 
 ksp { arg("floweventbus.index", "com.example.app.AppEventBusIndex") } // unique name per module
 
-dependencies { ksp("com.github.rash-john.FlowEventBus:floweventbus-ksp:0.2.0") }
+dependencies { ksp("com.github.rash-john.FlowEventBus:floweventbus-ksp:0.2.1") }
 ```
 
 ```kotlin
@@ -524,10 +524,10 @@ FlowEventBus/
 | Module | Type | Depends on |
 |---|---|---|
 | `:floweventbus` | Kotlin/JVM library (`java-library`) | `kotlinx-coroutines-core` (api) |
-| `:floweventbus-android` | Android library, minSdk 23, compileSdk 37 | `:floweventbus`, `kotlinx-coroutines-android`, `androidx.lifecycle:lifecycle-runtime-ktx` |
+| `:floweventbus-android` | Android library, minSdk 23, compileSdk 36 | `:floweventbus`, `kotlinx-coroutines-android`, `androidx.lifecycle:lifecycle-runtime-ktx` |
 | `:floweventbus-ksp` | KSP processor (`ksp(...)` only, not on the runtime classpath) | `symbol-processing-api` |
 
-Toolchain: Kotlin 2.0.21, KSP 2.0.21-1.0.28, coroutines 1.9.0, AGP 8.13.2, JVM 17. Group `com.github.rash-john.FlowEventBus` on JitPack (`com.floweventbus` for local builds), version `0.2.0`.
+Toolchain: Kotlin 2.0.21, KSP 2.0.21-1.0.28, coroutines 1.9.0, AGP 8.13.2, JVM 17. Group `com.github.rash-john.FlowEventBus` on JitPack (`com.floweventbus` for local builds), version `0.2.1`.
 
 ---
 
