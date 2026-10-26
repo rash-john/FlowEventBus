@@ -151,7 +151,7 @@ and found by reflection at runtime, so adding the index never breaks anything.
 
 ## 🚀 Usage
 
-There are three ways to subscribe. All of them go through the same internal delivery pipeline.
+There are three ways to subscribe, plus Android lifecycle helpers built on top of them. All of them go through the same internal delivery pipeline.
 
 ### 1. EventBus style – annotated methods
 
@@ -193,14 +193,9 @@ sub.unsubscribe()          // or sub.close() – EventSubscription is Closeable
 
 // removed automatically when the scope is cancelled (e.g. ViewModel cleared)
 bus.subscribe<RideRequested>(viewModelScope) { repo.refresh() }
-
-// Android: removed when the LifecycleOwner is destroyed, MAIN by default
-bus.subscribe<RideRequested>(owner = this) { show(it) }
-
-// Android: active only while STARTED (repeatOnLifecycle), delivered on main
-onEvent<RideRequested> { show(it) }
-viewLifecycleOwner.onEvent<LocationChanged>(sticky = true) { moveMarker(it) }
 ```
+
+On Android, see [Android lifecycle](#%EF%B8%8F-android-lifecycle) for subscriptions that follow a `LifecycleOwner`.
 
 ### 3. Flow
 
@@ -210,6 +205,71 @@ bus.events<LocationChanged>()
     .debounce(500)
     .collect { upload(it) }
 ```
+
+### ♻️ Android lifecycle
+
+`floweventbus-android` has three helpers that tie a subscription to a `LifecycleOwner`, so you never have to
+unregister by hand. Pick one by **when** you want events to arrive:
+
+| Helper | Subscribes as | Receives events | Cleaned up | Thread |
+|---|---|---|---|---|
+| `bus.registerWithLifecycle(obj, owner, minState)` | `@Subscribe` methods | while state ≥ `minState` (default `STARTED`) | unregistered below `minState`, observer removed on `DESTROYED` | per `@Subscribe(threadMode)` |
+| `bus.subscribe<T>(owner) { }` | lambda | from now until destroyed, **even while stopped** | on `DESTROYED` | `MAIN` by default (any `ThreadMode`) |
+| `owner.onEvent<T> { }` | `Flow` collector | while state ≥ `minState` (default `STARTED`) | stops below `minState`, restarts above it, ends on `DESTROYED` | main thread |
+
+**Activity**
+
+```kotlin
+class RideActivity : AppCompatActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val bus = FlowEventBus.getDefault()
+
+        // @Subscribe methods: registered on START, unregistered on STOP
+        bus.registerWithLifecycle(this, this)
+
+        // visible-only lambda, re-delivers the latest sticky event every time the screen comes back
+        onEvent<LocationChanged>(sticky = true) { moveMarker(it) }
+
+        // runs even in the background, until onDestroy
+        bus.subscribe<RideCancelled>(owner = this) { finish() }
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    fun onRideRequested(event: RideRequested) = showRequest(event.rideId)
+}
+```
+
+**Fragment:** use `viewLifecycleOwner` in `onViewCreated` for anything that touches views. A fragment's
+own lifecycle outlives its view, so collecting with `this` would update a destroyed view, and you'd get a
+duplicate collector every time the view is recreated.
+
+```kotlin
+override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    viewLifecycleOwner.onEvent<RideRequested> { binding.title.text = it.rideId }
+}
+```
+
+**ViewModel:** it has no `LifecycleOwner`, so use the scope overload. The subscription is removed when
+`viewModelScope` is cancelled in `onCleared()`:
+
+```kotlin
+init {
+    FlowEventBus.getDefault().subscribe<RideRequested>(viewModelScope, ThreadMode.BACKGROUND) { repo.refresh(it.rideId) }
+}
+```
+
+**Options**
+
+- `minState` can be `CREATED`, `STARTED` or `RESUMED`. For `registerWithLifecycle`, `INITIALIZED` and `DESTROYED` throw `IllegalArgumentException`.
+- `onEvent(bus = myBus)` uses a bus other than the default.
+- `onEvent` returns a `Job` and `subscribe(owner)` returns an `EventSubscription`. Cancel or `unsubscribe()` either one to stop early.
+
+> [!IMPORTANT]
+> - Events posted while an owner is below `minState` are **dropped**, not queued. Post with `postSticky` if
+>   the screen must see the latest value when it comes back (`onEvent(sticky = true)` or `@Subscribe(sticky = true)`).
+> - `onEvent` collects a `Flow`, so `priority` and `cancelEventDelivery` don't apply. Use `subscribe(owner, priority = …)` if you need them.
+> - Don't mix `registerWithLifecycle` with a manual `register(obj)` for the same object. The manual call throws if the object is already registered.
 
 ### Posting
 
