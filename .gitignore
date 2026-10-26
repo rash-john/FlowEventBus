@@ -1,0 +1,32 @@
+# Build output
+build/
+.gradle/
+.kotlin/
+*.class
+*.log
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local machine config (SDK path, may hold secrets)
+local.properties
+
+# Secrets: signing keys, credentials, env files
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+*.gpg
+*.asc
+secring.*
+.env
+.env.*
+secrets.properties
+google-services.json
