@@ -14,4 +14,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "FlowEventBus"
-include(":floweventbus", ":floweventbus-android", ":floweventbus-ksp")
+include(":floweventbus", ":floweventbus-android", ":floweventbus-ksp", ":sample")

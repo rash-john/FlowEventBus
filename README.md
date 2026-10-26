@@ -41,6 +41,7 @@ onEvent<RideRequested> { show(it) }                       // lifecycle-aware, no
 
 - [Installation](#-installation)
 - [Usage](#-usage)
+- [Sample app](#-sample-app)
 - [How it works](#-how-it-works-implementation)
 - [Configuration reference](#%EF%B8%8F-configuration-reference)
 - [Project layout](#-project-layout)
@@ -315,6 +316,58 @@ bus.subscribe<SubscriberExceptionEvent> { crashReporter.log(it.throwable, it.cau
 
 ---
 
+## 📱 Sample app
+
+The [`sample/`](sample) module is a one-screen Jetpack Compose (Material 3) app with a button for every
+feature. Each handler writes to an on-screen event log, tagged with the thread it ran on (also sent to Logcat
+under `FlowEventBusSample`). It supports light and dark themes, and its launcher icon shows one publisher
+streaming events to three subscribers.
+
+```bash
+./gradlew :sample:installDebug
+```
+
+| Button | What it shows | API |
+|---|---|---|
+| `post(Ping)` | One handler per thread mode, plus a lambda tied to the Activity and a ViewModel counter (under the title) | `@Subscribe(threadMode = …)`, `subscribe(owner)`, `subscribe(viewModelScope)` |
+| `emit(Ping)` | `emit` returns only after every handler, including a `suspend` one with a 300 ms delay | `emit`, `suspend` handlers |
+| `postSticky(Location)` | The "Sticky location" card updates and keeps its value after rotation | `postSticky`, `onEvent(sticky = true)` |
+| `Read & clear` | Reads, then removes, the stored event | `getStickyEvent<T>()`, `removeStickyEvent<T>()` |
+| `Chat + duplicate` | The priority 100 subscriber cancels the duplicate before priority 0 sees it | `priority`, `cancelEventDelivery` |
+| `post(Dog) → Animal` | A subscriber for the superclass receives the subclass | event inheritance |
+| `Subscriber throws` | Delivery survives; the error arrives as an event | `SubscriberExceptionEvent` |
+| `Nobody listens` | No subscribers, reported as an event | `hasSubscriberForEvent<T>()`, `NoSubscriberEvent` |
+| `Type "flow"` | Four quick posts collapse into one line | `events<T>()` + Flow operators |
+
+Tapping through it gives a log like this:
+
+```
+POSTING #1                                 [main]
+MAIN #1                                    [main]
+BACKGROUND #1                              [DefaultDispatcher-worker-1]
+ASYNC #1                                   [DefaultDispatcher-worker-2]
+MAIN_ORDERED suspend (+300 ms) #1          [main]
+emit #2 returned after every handler       [main]
+priority 0: received "hello"               [main]
+priority 100: cancelled duplicate "hello"  [main]
+Animal subscriber got Dog "dog"            [main]
+SubscriberExceptionEvent: boom from onCrash [main]
+NoSubscriberEvent: Unheard                 [main]
+Flow debounce: last key 'w'                [main]
+```
+
+Setup worth copying:
+
+- [`SampleApp.kt`](sample/src/main/kotlin/com/floweventbus/sample/SampleApp.kt): `installDefaultFlowEventBus()` with the Logcat logger and the KSP index.
+- [`sample/build.gradle.kts`](sample/build.gradle.kts): the `ksp { arg("floweventbus.index", …) }` setup that generates `SampleEventBusIndex`.
+- [`MainActivity.kt`](sample/src/main/kotlin/com/floweventbus/sample/MainActivity.kt): every subscription style in one place.
+- [`CounterViewModel.kt`](sample/src/main/kotlin/com/floweventbus/sample/CounterViewModel.kt): subscribing from a ViewModel.
+
+The sample depends on the modules in this repo (`project(":floweventbus-android")`). In your own app, use the
+[JitPack coordinates](#-installation) instead.
+
+---
+
 ## 🔍 How it works (implementation)
 
 ### Big picture
@@ -577,8 +630,16 @@ FlowEventBus/
 │       ├── AndroidLogger.kt         Logcat logger + FlowEventBusBuilder.android()
 │       └── LifecycleExtensions.kt   registerWithLifecycle, subscribe(owner), LifecycleOwner.onEvent<T>
 │
-└── floweventbus-ksp/                optional KSP processor: generates a SubscriberIndex
-    └── src/main/kotlin/com/floweventbus/ksp/SubscriberIndexProcessor.kt
+├── floweventbus-ksp/                optional KSP processor: generates a SubscriberIndex
+│   └── src/main/kotlin/com/floweventbus/ksp/SubscriberIndexProcessor.kt
+│
+└── sample/                          demo app covering every feature (not published)
+    └── src/main/kotlin/com/floweventbus/sample/
+        ├── SampleApp.kt             default bus setup with the KSP index
+        ├── MainActivity.kt          all subscriptions + Compose screen: one button per feature, event log
+        ├── Theme.kt                 Material 3 light/dark colors matching the launcher icon
+        ├── CounterViewModel.kt      ViewModel subscription via viewModelScope
+        └── Events.kt                the sample's event classes
 ```
 
 | Module | Type | Depends on |
@@ -586,6 +647,7 @@ FlowEventBus/
 | `:floweventbus` | Kotlin/JVM library (`java-library`) | `kotlinx-coroutines-core` (api) |
 | `:floweventbus-android` | Android library, minSdk 23, compileSdk 36 | `:floweventbus`, `kotlinx-coroutines-android`, `androidx.lifecycle:lifecycle-runtime-ktx` |
 | `:floweventbus-ksp` | KSP processor (`ksp(...)` only, not on the runtime classpath) | `symbol-processing-api` |
+| `:sample` | Android app, not published | `:floweventbus-android`, `ksp(:floweventbus-ksp)`, Compose Material 3, `androidx.activity:activity-compose` |
 
 Toolchain: Kotlin 2.0.21, KSP 2.0.21-1.0.28, coroutines 1.9.0, AGP 8.13.2, JVM 17. Group `com.github.rash-john.FlowEventBus` on JitPack (`com.floweventbus` for local builds), version `0.2.1`.
 
@@ -597,6 +659,7 @@ Toolchain: Kotlin 2.0.21, KSP 2.0.21-1.0.28, coroutines 1.9.0, AGP 8.13.2, JVM 1
 ./gradlew build                 # compile all modules + run tests
 ./gradlew :floweventbus:test    # core unit tests (plain JVM, no device needed)
 ./gradlew publishToMavenLocal   # install all artifacts to ~/.m2 (unsigned)
+./gradlew :sample:installDebug  # install the sample app on a device or emulator
 ```
 
 `floweventbus/src/test/kotlin/com/floweventbus/FlowEventBusTest.kt` covers:

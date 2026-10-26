@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One publisher (left) streams events along the bus to three subscribers (right). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- flow lines -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M42,54 C56,54 58,37 72,37 M42,54 L72,54 M42,54 C56,54 58,71 72,71" />
+    <!-- publisher -->
+    <path android:fillColor="#FFFFFF" android:pathData="M33,45a9,9 0,1 1,0 18a9,9 0,1 1,0 -18z" />
+    <!-- subscribers -->
+    <path android:fillColor="#FFFFFF" android:pathData="M77,31a6,6 0,1 1,0 12a6,6 0,1 1,0 -12z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M77,48a6,6 0,1 1,0 12a6,6 0,1 1,0 -12z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M77,65a6,6 0,1 1,0 12a6,6 0,1 1,0 -12z" />
+    <!-- events in flight -->
+    <path android:fillColor="#7CF2E3" android:pathData="M57.3,41a4,4 0,1 1,0 8a4,4 0,1 1,0 -8z" />
+    <path android:fillColor="#7CF2E3" android:pathData="M63,50a4,4 0,1 1,0 8a4,4 0,1 1,0 -8z" />
+    <path android:fillColor="#7CF2E3" android:pathData="M57.3,59a4,4 0,1 1,0 8a4,4 0,1 1,0 -8z" />
+</vector>
